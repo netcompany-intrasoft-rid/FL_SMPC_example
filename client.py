@@ -11,7 +11,7 @@ from tensorflow.keras.datasets import mnist
 
 import smpc_pb2
 import smpc_pb2_grpc
-from utils import partition_dataset, load_model, ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays, convert_npz_file_to_array, fixed_to_float
+from utils import partition_dataset, load_model, ndarrays_to_sparse_parameters, fixed_to_float
 
 PRIME = 2**31 - 1
 SCALE_FACTOR = 1e6
@@ -72,7 +72,6 @@ class SMPCClient(fl.client.NumPyClient):
         for peer_id, peer_address in enumerate(self.peer_addresses):
             try:
                 channel = grpc.insecure_channel(peer_address)
-                stub = smpc_pb2_grpc.SMPCStub(channel)
                 self.peer_stubs[peer_id] = smpc_pb2_grpc.SMPCStub(channel)
                 logger.info(f"Client {self.client_id} connected to peer {peer_id} at {peer_address}")
             except Exception as e:
