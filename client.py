@@ -3,7 +3,6 @@ import logging
 import threading
 import time
 from concurrent import futures
-from typing import List
 import flwr as fl
 import grpc
 import numpy as np
@@ -174,12 +173,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model = load_model()
-    client = SMPCClient(model, args.client_id, args.client_port, args.peer_addresses)
+    fl_client = SMPCClient(model, args.client_id, args.client_port, args.peer_addresses)
     try:
-        client.start()
+        fl_client.start()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     except Exception as e:
         logger.error(f"An error occurred: {e}")
     finally:
-        client.cleanup()
+        fl_client.cleanup()
