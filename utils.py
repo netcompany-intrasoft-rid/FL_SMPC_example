@@ -7,7 +7,7 @@ import numpy as np
 from flwr.common.typing import NDArray,NDArrays, Parameters
 
 PRIME = 2**31 - 1
-SCALE_FACTOR = 1e-6
+SCALE_FACTOR = 1e6
 
 def float_to_fixed_point(x: float) -> int:
     return int(x * SCALE_FACTOR) % PRIME
