@@ -10,7 +10,7 @@ from tensorflow.keras.datasets import mnist
 
 import smpc_pb2
 import smpc_pb2_grpc
-from utils import partition_dataset, load_model, ndarrays_to_sparse_parameters, fixed_to_float
+from utils import partition_dataset, load_model, ndarrays_to_sparse_parameters, fixed_to_float, float_to_fixed_point
 
 PRIME = 2**31 - 1
 SCALE_FACTOR = 1e6
@@ -34,7 +34,7 @@ class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
             shares.append(data.reshape(shape))
         self.client.receive_shares(client_id, shares)
         return smpc_pb2.AckResponse(status="ACK")
-    
+
 class SMPCClient(fl.client.NumPyClient):
     def __init__(self, model, client_id, client_port, peer_addresses):
         self.model = model
@@ -75,7 +75,7 @@ class SMPCClient(fl.client.NumPyClient):
                 logger.info(f"Client {self.client_id} connected to peer {peer_id} at {peer_address}")
             except Exception as e:
                 logger.error(f"Client {self.client_id} failed to connect to peer {peer_id}: {e}")
-        
+
         if len(self.peer_stubs) == len(self.peer_addresses):
             logger.info(f"Client {self.client_id} connected to all peers")
             print(self.peer_stubs)
@@ -85,15 +85,77 @@ class SMPCClient(fl.client.NumPyClient):
 
     def get_parameters(self):
         logger.info(f"Client {self.client_id}: get_parameters() called")
-        return ndarrays_to_sparse_parameters(self.model.get_weights())
-    
-    def fit(self,parameters,config):
+        return self.model.get_weights()
+
+    def fit(self,parameters, config):
         logger.info(f"Client {self.client_id}: fit() called")
         self.model.set_weights(parameters)
         self.model.fit(self.x_train, self.y_train, epochs=2, batch_size=32, verbose=1)
 
         secret_shares = self.create_secret_shares(self.model, self.num_clients)
+        self.own_shares = secret_shares[self.client_id]
+        fixed_point_shares = {
+            client_id: [
+                np.array([float_to_fixed_point(w) for w in matrix.flatten()]).reshape(matrix.shape) for matrix in shares]
+                for client_id, shares in secret_shares.items() if client_id != self.client_id
+        }
 
+        self.send_shares_to_peers(fixed_point_shares)
+
+        if not self.all_shares_received.wait(timeout=60):
+            logger.error(f"Not all shares received for client {self.client_id}")
+
+        aggregated_shares = self.aggregate_received_shares()
+        self.all_shares_received.clear()
+        self.received_shares.clear()
+        print(aggregated_shares)
+        return aggregated_shares, len(self.x_train), {}
+
+    def evaluate(self, parameters, config):
+        logger.info(f"Client {self.client_id}: evaluate() called")
+
+        # Convert parameters to the correct shape
+        model_weights = []
+        current_idx = 0
+
+        for expected_shape in self.model_shape:
+            total_elements = np.prod(expected_shape)
+
+            if isinstance(parameters, np.lib.npyio.NpzFile):
+                param_data = None
+                for key in parameters.files:
+                    if current_idx == len(model_weights):
+                        param_data = parameters[key]
+                        # Convert npz array data to the correct shape
+                        if param_data is not None and param_data.size >= total_elements:
+                            reshaped_param = param_data[:total_elements].reshape(expected_shape)
+                            model_weights.append(reshaped_param)
+                        break
+                current_idx += 1
+            elif isinstance(parameters, list):
+                # handle list of arrays case
+                if current_idx < len(parameters):
+                    param = parameters[current_idx]
+                    flattened_param = np.array(param).flatten()
+                    if flattened_param.size >= total_elements:
+                        reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
+                        model_weights.append(reshaped_param)
+                    current_idx += 1
+
+        if len(model_weights) != len(self.model_shape):
+            logger.error(f"Model weights mismatch: {len(model_weights)} != {len(self.model_shape)}")
+            return 0.0, len(self.x_test), {"accuracy": 0.0}
+
+        for idx, (weight, expected_shape) in enumerate(zip(model_weights, self.model_shape)):
+            if weight.shape != expected_shape:
+                logger.error(f"Weight shape mismatch: {weight.shape} != {expected_shape}")
+                return 0.0, len(self.x_test), {"accuracy": 0.0}
+
+        logger.info("Successfully reshaped weights to match model architecture")
+        self.model.set_weights(model_weights)
+        loss, accuracy = self.model.evaluate(self.x_test, self.y_test, verbose=0)
+        logger.info(f"Client {self.client_id} evaluated model with loss: {loss} and accuracy: {accuracy}")
+        return loss, len(self.x_test), {"accuracy": accuracy}
 
     def create_secret_shares(self, model, num_clients):
         weights = model.get_weights()
@@ -109,10 +171,9 @@ class SMPCClient(fl.client.NumPyClient):
                 for i in range(num_clients):
                     split_matrices[i].append(shares[i])
 
-
-                for i in range(num_clients):
-                    reshaped_matrix = np.array(split_matrices[i]).reshape(weight_matrix.shape)
-                    secret_shares[i].append(reshaped_matrix)
+            for i in range(num_clients):
+                reshaped_matrix = np.array(split_matrices[i]).reshape(weight_matrix.shape)
+                secret_shares[i].append(reshaped_matrix)
 
         return secret_shares
 
@@ -122,7 +183,7 @@ class SMPCClient(fl.client.NumPyClient):
             share_protos = []
             for matrix in shares:
                 flattened_data = matrix.astype(np.int32).flatten()
-                share_protos.append(smpc_pb2.Share(data=flattened_data.tobytes(), shape=matrix.shape)) # Convert shapr to list
+                share_protos.append(smpc_pb2.Share(data=flattened_data.tobytes(), shape=list(matrix.shape))) # Convert shapr to list
             request = smpc_pb2.SharesRequest(client_id=self.client_id, shares=share_protos)
             try:
                 response = stub.SendShares(request)
@@ -130,13 +191,12 @@ class SMPCClient(fl.client.NumPyClient):
                     logger.info(f"Client {self.client_id} sent shares to peer {peer_id}")
                 else:
                     logger.error(f"Unexpected response from client {peer_id}: {response.status}")
-            except Exception as e:
+            except grpc.RpcError as e:
                 logger.error(f"Client {self.client_id} failed to send shares to peer {peer_id}: {e}")
 
     def aggregate_received_shares(self):
         logger.info(f"Client {self.client_id} started aggregating received shares")
         aggregated_weights = []
-
         all_shares = [self.own_shares] + list(self.received_shares.values())
 
         for weight_matrix_list in zip(*all_shares):
@@ -147,9 +207,9 @@ class SMPCClient(fl.client.NumPyClient):
                 aggregated_matrix = (aggregated_matrix + weight_matrix) % PRIME
             aggregated_matrix = np.array([fixed_to_float(x) for x in aggregated_matrix.flatten()]).reshape(aggregated_matrix.shape)
             aggregated_weights.append(aggregated_matrix)
-        
+
         return aggregated_weights
-    
+
     def receive_shares(self, client_id, shares):
         logger.info(f"Client {self.client_id} received shares from client {client_id}")
         self.received_shares[client_id] = shares
@@ -158,12 +218,13 @@ class SMPCClient(fl.client.NumPyClient):
             self.all_shares_received.set()
 
     def start(self):
-        time.sleep(1)
+        time.sleep(2)
         self.connect_to_peers()
 
         logger.info(f"Client {self.client_id} waiting for all peers to connect")
         self.all_peers_connected.wait()
-        logger.info(f"All peer connections established. Connecting to Flower server...")
+        logger.info("All peer connections established. Connecting to Flower server...")
+        fl.client.start_client(server_address="localhost:8080", client=self.to_client())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SMPC Client")
