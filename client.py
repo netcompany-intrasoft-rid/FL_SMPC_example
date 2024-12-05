@@ -37,6 +37,7 @@ class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
 
 class SMPCClient(fl.client.NumPyClient):
     def __init__(self, model, client_id, client_port, peer_addresses):
+        print(peer_addresses)
         self.model = model
         self.client_id = client_id
         self.peer_addresses = peer_addresses
@@ -90,6 +91,8 @@ class SMPCClient(fl.client.NumPyClient):
     def fit(self,parameters, config):
         logger.info(f"Client {self.client_id}: fit() called")
         self.model.set_weights(parameters)
+        print("Train size:")
+        print(len(self.x_train))
         self.model.fit(self.x_train, self.y_train, epochs=2, batch_size=32, verbose=1)
 
         secret_shares = self.create_secret_shares(self.model, self.num_clients)
@@ -230,11 +233,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SMPC Client")
     parser.add_argument("--client_id", type=int, required=True, help="Client ID")
     parser.add_argument("--client_port", type=int, required=True, help="Client port")
-    parser.add_argument("--peer_addresses", type=str, nargs="+", required=True, help="Peer addresses")
+    parser.add_argument("--peer_addresses", type=str, required=True, help="Peer addresses")
     args = parser.parse_args()
+    peer_addresses = args.peer_addresses.split(",")
 
     model = load_model()
-    fl_client = SMPCClient(model, args.client_id, args.client_port, args.peer_addresses)
+    fl_client = SMPCClient(model, args.client_id, args.client_port, peer_addresses)
     try:
         fl_client.start()
     except KeyboardInterrupt:
