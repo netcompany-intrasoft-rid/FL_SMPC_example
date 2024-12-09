@@ -27,7 +27,7 @@ class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
         shares = []
         for share in request.shares:
             shape = tuple(share.shape)
-            data = np.frombuffer(share.data, dtype=np.int32)
+            data = np.frombuffer(share.data)
             if data.size != np.prod(shape):
                 logger.error(f"Mismatch in data size and shape: {data.size} != {np.prod(shape)}")
                 return smpc_pb2.AckResponse(status="ERROR")
@@ -138,22 +138,22 @@ class SMPCClient(fl.client.NumPyClient):
         self.model.set_weights(processed_parameters)
         print("Train size:")
         print(len(self.x_train))
-        self.model.fit(self.x_train, self.y_train, epochs=2, batch_size=32, verbose=1)
+        self.model.fit(self.x_train, self.y_train, epochs=3, batch_size=32, verbose=1)
 
-        secret_shares = self.create_secret_shares(self.model, self.num_clients)
+        secret_shares = self.create_secret_shares_new(self.model, self.num_clients)
         self.own_shares = secret_shares[self.client_id]
-        fixed_point_shares = {
-            client_id: [
-                np.array([float_to_fixed_point(w) for w in matrix.flatten()]).reshape(matrix.shape) for matrix in shares]
-                for client_id, shares in secret_shares.items() if client_id != self.client_id
-        }
+        # fixed_point_shares = {
+        #     client_id: [
+        #         np.array([float_to_fixed_point(w) for w in matrix.flatten()]).reshape(matrix.shape) for matrix in shares]
+        #         for client_id, shares in secret_shares.items() if client_id != self.client_id
+        # }
 
-        self.send_shares_to_peers(fixed_point_shares)
+        self.send_shares_to_peers(secret_shares)
 
         if not self.all_shares_received.wait(timeout=60):
             logger.error(f"Not all shares received for client {self.client_id}")
 
-        aggregated_shares = self.aggregate_received_shares()
+        aggregated_shares = self.aggregate_received_shares_new()
         self.all_shares_received.clear()
         self.received_shares.clear()
         return aggregated_shares, len(self.x_train), {}
@@ -162,45 +162,7 @@ class SMPCClient(fl.client.NumPyClient):
         logger.info(f"Client {self.client_id}: evaluate() called")
 
         # Convert parameters to the correct shape
-        model_weights = []
-        current_idx = 0
-
-        if isinstance(parameters, np.lib.npyio.NpzFile):
-            for expected_shape in self.model_shape:
-                total_elements = np.prod(expected_shape)
-
-                for key in parameters.files:
-                    param_data = parameters[key]
-                    logger.info(f"Extracting {key} from npz file: shape={param_data.shape}")
-                    # Convert npz array data to the correct shape
-                    if param_data.size >= total_elements:
-                        reshaped_param = param_data[:total_elements].reshape(expected_shape)
-                        model_weights.append(reshaped_param)
-                        break
-        elif isinstance(parameters, list):
-            # handle list of arrays case
-            for expected_shape in self.model_shape:
-                total_elements = np.prod(expected_shape)
-                if current_idx < len(parameters):
-                    param = parameters[current_idx]
-
-                    if isinstance(param, np.lib.npyio.NpzFile):
-                        for key in param.files:
-                            param_data = param[key]
-                            logger.info(f"Extracting {key} from npz file: shape={param_data.shape}")
-                            flattened_param = param_data.flatten()
-                            logger.info(f"Flattened size={flattened_param.size}")
-                            if flattened_param.size >= total_elements:
-                                reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
-                                model_weights.append(reshaped_param)
-                                break
-                    else:
-                        flattened_param = np.array(param).flatten()
-                        logger.info(f"Parameter {current_idx}: shape={param.shape}, flattened size={flattened_param.size}")
-                        if flattened_param.size >= total_elements:
-                            reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
-                            model_weights.append(reshaped_param)
-                    current_idx += 1
+        model_weights = self.preprocess_incoming_parameters(parameters)
 
         model_weights_shape = [weight.shape for weight in model_weights]
 
@@ -219,16 +181,16 @@ class SMPCClient(fl.client.NumPyClient):
         logger.info(f"Client {self.client_id} evaluated model with loss: {loss} and accuracy: {accuracy}")
         return loss, len(self.x_test), {"accuracy": accuracy}
 
-    def create_secret_shares(self, model, num_clients):
-        weights = model.get_weights()
+    def create_secret_shares_new(self, fl_model, num_clients):
+        weights = fl_model.get_weights()
         secret_shares = {i: [] for i in range(num_clients)}
 
         for weight_matrix in weights:
             split_matrices = [[] for _ in range(num_clients)]
 
             for w in np.nditer(weight_matrix, order='C'):
-                shares = [np.random.randint(0,PRIME) for _ in range(num_clients - 1)]
-                last_share = (w - sum(shares)) % PRIME
+                shares = [np.random.uniform(-1e12, 1e12) for _ in range(num_clients - 1)]
+                last_share = (w - sum(shares))
                 shares.append(last_share)
                 for i in range(num_clients):
                     split_matrices[i].append(shares[i])
@@ -244,8 +206,8 @@ class SMPCClient(fl.client.NumPyClient):
             shares = list(secret_shares.values())[peer_id]
             share_protos = []
             for matrix in shares:
-                flattened_data = matrix.astype(np.int32).flatten()
-                share_protos.append(smpc_pb2.Share(data=flattened_data.tobytes(), shape=list(matrix.shape))) # Convert shapr to list
+                flattened_data = matrix.flatten()
+                share_protos.append(smpc_pb2.Share(data=flattened_data.tobytes(), shape=list(matrix.shape))) # Convert shape to list
             request = smpc_pb2.SharesRequest(client_id=self.client_id, shares=share_protos)
             try:
                 response = stub.SendShares(request)
@@ -271,6 +233,18 @@ class SMPCClient(fl.client.NumPyClient):
             aggregated_weights.append(aggregated_matrix)
 
         return aggregated_weights
+    
+    def aggregate_received_shares_new(self):
+        logger.info(f"Client {self.client_id} started aggregating received shares")
+        aggregated_weights = []
+        all_shares = [self.own_shares] + list(self.received_shares.values())
+
+        for weight_matrix_list in zip(*all_shares):
+            aggregated_matrix = np.sum(weight_matrix_list, axis=0)  # No modulo operation
+            aggregated_weights.append(aggregated_matrix)
+
+        return aggregated_weights
+
 
     def receive_shares(self, client_id, shares):
         logger.info(f"Client {self.client_id} received shares from client {client_id}")
