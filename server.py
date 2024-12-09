@@ -39,18 +39,29 @@ class SMPCServer(fl.server.strategy.FedAvg):
 
     def fixed_to_float(self, fixed_point: np.ndarray, scale_factor: float = 1e6) -> np.ndarray:
         """Convert fixed point to float"""
-        return (fixed_point.astype(np.float32) / scale_factor) - (PRIME / (2 * scale_factor))
+        half_prime = PRIME // 2
+        fixed_point = np.where(fixed_point > half_prime, fixed_point - PRIME, fixed_point)
+        float_values = fixed_point.astype(np.float32) / scale_factor
+        return float_values
 
     def aggregate_smpc_weights(self, weights_results: List[List[np.ndarray]]) -> List[np.ndarray]:
         """Aggregate weights using Secure Multi-Party Computation (SMPC)"""
         aggregated_weights = []
 
-        for layer_weight in zip(**weights_results):
+        for layer_weight in zip(*weights_results):
             layer_shape = layer_weight[0].shape
-            flattened_weights = [w.flatten() for w in layer_weight]
+
+            if layer_weight[0].ndim == 0:
+                # Bias
+                aggregated_layer = sum(layer_weight) % PRIME
+                aggregated_layer = self.fixed_to_float(aggregated_layer)
+                aggregated_weights.append(aggregated_layer)
+                continue
+
+            flattened_weights = [w.astype("float32").flatten() for w in layer_weight]
 
             # Sum up the shares
-            aggregated_layers = np.zeros_like(flattened_weights[0])
+            aggregated_layers = np.zeros_like(flattened_weights[0], dtype="int64")
             for weight in flattened_weights:
                 aggregated_layers  = (aggregated_layers + weight) % PRIME
 
@@ -91,7 +102,7 @@ class SMPCServer(fl.server.strategy.FedAvg):
             return None, {}
 
         accuracies = [evaluate_res.metrics["accuracy"] for _, evaluate_res in results]
-        losses = [evaluate_res.metrics["loss"] for _, evaluate_res in results]
+        losses = [evaluate_res.loss for _, evaluate_res in results]
         num_samples = [evaluate_res.num_examples for _, evaluate_res in results]
 
         # Calculate weighted average of accuracies and losses

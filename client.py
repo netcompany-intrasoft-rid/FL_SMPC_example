@@ -37,7 +37,6 @@ class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
 
 class SMPCClient(fl.client.NumPyClient):
     def __init__(self, model, client_id, client_port, peer_addresses):
-        print(peer_addresses)
         self.model = model
         self.client_id = client_id
         self.peer_addresses = peer_addresses
@@ -79,7 +78,6 @@ class SMPCClient(fl.client.NumPyClient):
 
         if len(self.peer_stubs) == len(self.peer_addresses):
             logger.info(f"Client {self.client_id} connected to all peers")
-            print(self.peer_stubs)
             self.all_peers_connected.set()
         else:
             logger.warning(f"Client {self.client_id} failed to connect to all peers")
@@ -87,10 +85,57 @@ class SMPCClient(fl.client.NumPyClient):
     def get_parameters(self):
         logger.info(f"Client {self.client_id}: get_parameters() called")
         return self.model.get_weights()
+    
+    def preprocess_incoming_parameters(self, parameters):
+        model_weights = []
+        current_idx = 0
+
+        if isinstance(parameters, np.lib.npyio.NpzFile):
+            for expected_shape in self.model_shape:
+                total_elements = np.prod(expected_shape)
+
+                for key in parameters.files:
+                    param_data = parameters[key]
+                    logger.info(f"Extracting {key} from npz file: shape={param_data.shape}")
+                    # Convert npz array data to the correct shape
+                    if param_data.size >= total_elements:
+                        reshaped_param = param_data[:total_elements].reshape(expected_shape)
+                        model_weights.append(reshaped_param)
+                        break
+        elif isinstance(parameters, list):
+            # handle list of arrays case
+            for expected_shape in self.model_shape:
+                total_elements = np.prod(expected_shape)
+                if current_idx < len(parameters):
+                    param = parameters[current_idx]
+
+                    if isinstance(param, np.lib.npyio.NpzFile):
+                        for key in param.files:
+                            param_data = param[key]
+                            logger.info(f"Extracting {key} from npz file: shape={param_data.shape}")
+                            flattened_param = param_data.flatten()
+                            logger.info(f"Flattened size={flattened_param.size}")
+                            if flattened_param.size >= total_elements:
+                                reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
+                                model_weights.append(reshaped_param)
+                                break
+                    else:
+                        flattened_param = np.array(param).flatten()
+                        logger.info(f"Parameter {current_idx}: shape={param.shape}, flattened size={flattened_param.size}")
+                        if flattened_param.size >= total_elements:
+                            reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
+                            model_weights.append(reshaped_param)
+                    current_idx += 1
+        return model_weights
+
 
     def fit(self,parameters, config):
         logger.info(f"Client {self.client_id}: fit() called")
-        self.model.set_weights(parameters)
+        processed_parameters = self.preprocess_incoming_parameters(parameters)
+        print("processed parameters shapes")
+        print([param.shape for param in processed_parameters])
+
+        self.model.set_weights(processed_parameters)
         print("Train size:")
         print(len(self.x_train))
         self.model.fit(self.x_train, self.y_train, epochs=2, batch_size=32, verbose=1)
@@ -111,7 +156,6 @@ class SMPCClient(fl.client.NumPyClient):
         aggregated_shares = self.aggregate_received_shares()
         self.all_shares_received.clear()
         self.received_shares.clear()
-        print(aggregated_shares)
         return aggregated_shares, len(self.x_train), {}
 
     def evaluate(self, parameters, config):
@@ -121,37 +165,52 @@ class SMPCClient(fl.client.NumPyClient):
         model_weights = []
         current_idx = 0
 
-        for expected_shape in self.model_shape:
-            total_elements = np.prod(expected_shape)
+        if isinstance(parameters, np.lib.npyio.NpzFile):
+            for expected_shape in self.model_shape:
+                total_elements = np.prod(expected_shape)
 
-            if isinstance(parameters, np.lib.npyio.NpzFile):
-                param_data = None
                 for key in parameters.files:
-                    if current_idx == len(model_weights):
-                        param_data = parameters[key]
-                        # Convert npz array data to the correct shape
-                        if param_data is not None and param_data.size >= total_elements:
-                            reshaped_param = param_data[:total_elements].reshape(expected_shape)
-                            model_weights.append(reshaped_param)
+                    param_data = parameters[key]
+                    logger.info(f"Extracting {key} from npz file: shape={param_data.shape}")
+                    # Convert npz array data to the correct shape
+                    if param_data.size >= total_elements:
+                        reshaped_param = param_data[:total_elements].reshape(expected_shape)
+                        model_weights.append(reshaped_param)
                         break
-                current_idx += 1
-            elif isinstance(parameters, list):
-                # handle list of arrays case
+        elif isinstance(parameters, list):
+            # handle list of arrays case
+            for expected_shape in self.model_shape:
+                total_elements = np.prod(expected_shape)
                 if current_idx < len(parameters):
                     param = parameters[current_idx]
-                    flattened_param = np.array(param).flatten()
-                    if flattened_param.size >= total_elements:
-                        reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
-                        model_weights.append(reshaped_param)
+
+                    if isinstance(param, np.lib.npyio.NpzFile):
+                        for key in param.files:
+                            param_data = param[key]
+                            logger.info(f"Extracting {key} from npz file: shape={param_data.shape}")
+                            flattened_param = param_data.flatten()
+                            logger.info(f"Flattened size={flattened_param.size}")
+                            if flattened_param.size >= total_elements:
+                                reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
+                                model_weights.append(reshaped_param)
+                                break
+                    else:
+                        flattened_param = np.array(param).flatten()
+                        logger.info(f"Parameter {current_idx}: shape={param.shape}, flattened size={flattened_param.size}")
+                        if flattened_param.size >= total_elements:
+                            reshaped_param = flattened_param[:total_elements].reshape(expected_shape)
+                            model_weights.append(reshaped_param)
                     current_idx += 1
 
-        if len(model_weights) != len(self.model_shape):
-            logger.error(f"Model weights mismatch: {len(model_weights)} != {len(self.model_shape)}")
+        model_weights_shape = [weight.shape for weight in model_weights]
+
+        if model_weights_shape != self.model_shape:
+            logger.error(f"Model weights mismatch: {model_weights_shape} != {self.model_shape}")
             return 0.0, len(self.x_test), {"accuracy": 0.0}
 
         for idx, (weight, expected_shape) in enumerate(zip(model_weights, self.model_shape)):
             if weight.shape != expected_shape:
-                logger.error(f"Weight shape mismatch: {weight.shape} != {expected_shape}")
+                logger.error(f"Weight shape mismatch at index {idx}: {weight.shape} != {expected_shape}")
                 return 0.0, len(self.x_test), {"accuracy": 0.0}
 
         logger.info("Successfully reshaped weights to match model architecture")

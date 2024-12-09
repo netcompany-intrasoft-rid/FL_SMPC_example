@@ -42,7 +42,6 @@ def ndarrays_to_sparse_parameters(ndarrays: NDArrays) -> Parameters:
 def sparse_parameters_to_ndarrays(parameters: Parameters) -> NDArrays:
     return [sparse_bytes_to_ndarray(tensor) for tensor in parameters.tensors]
 
-
 def ndarray_to_sparse_bytes(ndarray: NDArray) -> bytes:
     bytes_io = BytesIO()
 
@@ -71,11 +70,11 @@ def sparse_bytes_to_ndarray(tensor: bytes) -> NDArray:
     loader = np.load(bytes_io, allow_pickle=False)
 
     if "crow_indices" in loader:
-        ndarray_deserialized = (torch.sparse_csr_tensor(
+        ndarray_deserialized = torch.sparse_csr_tensor(
             crow_indices=loader["crow_indices"],
             col_indices=loader["col_indices"],
             values=loader["values"]
-        ).to_dense().numpy())
+        ).to_dense().numpy()
     else:
         ndarray_deserialized = loader
     return cast(NDArray, ndarray_deserialized)
