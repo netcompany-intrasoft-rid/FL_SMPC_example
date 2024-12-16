@@ -2,9 +2,9 @@ import threading
 from typing import List, Tuple, Optional, Dict
 import flwr as fl
 import numpy as np
-from flwr.common import FitRes, EvaluateRes, Parameters, Scalar
+from flwr.common import FitRes, EvaluateRes, Parameters, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
-from utils import PRIME, SCALE_FACTOR, sparse_parameters_to_ndarrays, ndarrays_to_sparse_parameters
+from utils import sparse_parameters_to_ndarrays, ndarrays_to_sparse_parameters, plot_metrics
 
 class SMPCServer(fl.server.strategy.FedAvg):
     def __init__(self, num_clients: int, fraction_fit: float = 1.0, fraction_evaluate: float = 1.0):
@@ -14,6 +14,8 @@ class SMPCServer(fl.server.strategy.FedAvg):
         self.wait_timeout = 60 # seconds
         self.clients_ready_event = threading.Event()
         self.model_structure = None
+        self.loss_per_round = []
+        self.accuracy_per_round = []
 
     def initialize_parameters(self, client_manager: fl.server.client_manager.ClientManager) -> Optional[Parameters]:
         """Ensure the server waits for all clients to connect before initializing parameters"""
@@ -37,29 +39,23 @@ class SMPCServer(fl.server.strategy.FedAvg):
 
         return [weights1, bias1, weights2, bias2]
 
-    def fixed_to_float(self, fixed_point: np.ndarray, scale_factor: float = 1e6) -> np.ndarray:
-        """Convert fixed point to float"""
-        half_prime = PRIME // 2
-        fixed_point = np.where(fixed_point > half_prime, fixed_point - PRIME, fixed_point)
-        float_values = fixed_point.astype(np.float32) / scale_factor
-        return float_values
-
     def aggregate_smpc_weights(self, weights_results: List[List[np.ndarray]], num_samples: List[int]) -> List[np.ndarray]:
         """Aggregate weights using Secure Multi-Party Computation (SMPC)"""
         total_samples = sum(num_samples)
         aggregated_weights = []
 
+        print("-- SERVER SMPC AGGREGATION --")
         for layer_weight in zip(*weights_results):
             layer_shape = layer_weight[0].shape
+            print(layer_shape)
 
             if layer_weight[0].ndim == 0:
                 # Bias
                 aggregated_layer = sum(w * n for w, n in zip(layer_weight, num_samples)) / total_samples
-                # aggregated_layer = self.fixed_to_float(aggregated_layer)
                 aggregated_weights.append(aggregated_layer)
                 continue
 
-            flattened_weights = [w.flatten() for w in layer_weight]
+            flattened_weights = [np.array(w, dtype=np.float32).flatten() for w in layer_weight]
 
             # Sum up the shares
             # aggregated_layers = np.zeros_like(flattened_weights[0], dtype="int64")
@@ -68,8 +64,6 @@ class SMPCServer(fl.server.strategy.FedAvg):
             aggregated_layers = sum(weight * num_samples[i] for i, weight in enumerate(flattened_weights))
             aggregated_layers /= total_samples  # Normalize by total samples
 
-            # Convert back to float and reshape
-            # aggregated_layer = self.fixed_to_float(aggregated_layers)
             aggregated_layer = aggregated_layers.reshape(layer_shape)
             aggregated_weights.append(aggregated_layer)
 
@@ -83,19 +77,20 @@ class SMPCServer(fl.server.strategy.FedAvg):
         if not results:
             return None, {}
 
-        # extract weights and metrics
-        weights_results = [sparse_parameters_to_ndarrays(fit_res.parameters) for _, fit_res in results]
+        weights_results = [parameters_to_ndarrays(fit_res.parameters) for _, fit_res in results]
         num_samples = [fit_res.num_examples for _, fit_res in results]
 
         # Aggregate weights using SMPC
         aggregated_weights = self.aggregate_smpc_weights(weights_results, num_samples)
+        assert len(aggregated_weights) == len(weights_results[0]), "Mismatch in number of layers"
 
         # Convert aggregated weights to Parameters
-        aggregated_parameters = ndarrays_to_sparse_parameters(aggregated_weights)
+        # aggregated_parameters = ndarrays_to_sparse_parameters(aggregated_weights)
 
         # Aggregate metrics (if any)
+        parameters = fl.common.ndarrays_to_parameters(aggregated_weights)
         metrics_aggregated = {}
-        return aggregated_parameters, metrics_aggregated
+        return parameters, metrics_aggregated
 
     def aggregate_evaluate(self, server_round: int,
                            results: List[Tuple[ClientProxy, EvaluateRes]],
@@ -114,6 +109,10 @@ class SMPCServer(fl.server.strategy.FedAvg):
         weighted_loss = np.average(losses, weights=num_samples)
 
         print(f"Round {server_round}: Weighted Accuracy: {weighted_accuracy}, Weighted Loss: {weighted_loss}")
+        self.loss_per_round.append(weighted_loss)
+        self.accuracy_per_round.append(weighted_accuracy)
+        plot_metrics(self.loss_per_round, self.accuracy_per_round)
+
         return weighted_loss, {"accuracy": weighted_accuracy}
 
     def configure_fit(self, server_round: int,

@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import cast
 import numpy as np
 from flwr.common.typing import NDArray,NDArrays, Parameters
+import matplotlib.pyplot as plt
 
 PRIME = 2**31 - 1
 SCALE_FACTOR = 1e6
@@ -82,3 +83,25 @@ def sparse_bytes_to_ndarray(tensor: bytes) -> NDArray:
 def convert_npz_file_to_array(npz_file):
     arrays = [npz_file[key] for key in npz_file.files]
     return np.concatenate(arrays)
+
+def plot_metrics(loss_per_round, accuracy_per_round):
+    """Plot the loss and accuracy at the end of execution."""
+    rounds = list(range(1, len(loss_per_round) + 1))
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(rounds, loss_per_round, label="Loss", marker="o")
+    plt.xlabel("Round")
+    plt.ylabel("Loss")
+    plt.title("Loss per Round")
+    plt.grid(True)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(rounds, accuracy_per_round, label="Accuracy", marker="o", color="green")
+    plt.xlabel("Round")
+    plt.ylabel("Accuracy")
+    plt.title("Accuracy per Round")
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
