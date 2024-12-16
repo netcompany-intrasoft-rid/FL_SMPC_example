@@ -130,4 +130,4 @@ if __name__ == "__main__":
     strategy = SMPCServer(num_clients=3, fraction_fit=1.0, fraction_evaluate=1.0)
     fl.server.start_server(server_address="localhost:8080",
                            strategy=strategy,
-                           config=fl.server.ServerConfig(num_rounds=15))
+                           config=fl.server.ServerConfig(num_rounds=5))
