@@ -94,7 +94,6 @@ class SMPCClient(fl.client.NumPyClient):
         print(len(self.x_train))
         self.model.fit(self.x_train, self.y_train, epochs=3, batch_size=32, verbose=1)
 
-        # secret_shares = self.create_secret_shares_new(self.model, self.num_clients)
         secret_shares = list(self.split_model_weights_to_shares(self.model.get_weights(), self.num_clients).values())
 
         self.own_shares = secret_shares[self.client_id]
@@ -171,26 +170,6 @@ class SMPCClient(fl.client.NumPyClient):
         ]
         return reconstructed_weights
 
-    def create_secret_shares_new(self, fl_model, num_clients):
-        weights = fl_model.get_weights()
-        secret_shares = {i: [] for i in range(num_clients)}
-
-        for weight_matrix in weights:
-            split_matrices = [[] for _ in range(num_clients)]
-
-            for w in np.nditer(weight_matrix, order='C'):
-                shares = [np.random.uniform(-1, 1) for _ in range(num_clients - 1)]
-                last_share = (w - sum(shares))
-                shares.append(last_share)
-                for i in range(num_clients):
-                    split_matrices[i].append(shares[i])
-
-            for i in range(num_clients):
-                reshaped_matrix = np.array(split_matrices[i]).reshape(weight_matrix.shape)
-                secret_shares[i].append(reshaped_matrix)
-
-        return secret_shares
-
     def send_shares_to_peers(self, secret_shares):
         for peer_id, stub in self.peer_stubs.items():
             shares = secret_shares[peer_id]
@@ -218,7 +197,6 @@ class SMPCClient(fl.client.NumPyClient):
             aggregated_weights.append(aggregated_matrix)
 
         return aggregated_weights
-
 
     def receive_shares(self, client_id, shares):
         logger.info(f"Client {self.client_id} received shares from client {client_id}")
