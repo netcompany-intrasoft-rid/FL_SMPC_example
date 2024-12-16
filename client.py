@@ -4,7 +4,6 @@ import threading
 import time
 from concurrent import futures
 import flwr as fl
-from flwr.common import ndarrays_to_parameters
 import grpc
 import numpy as np
 from tensorflow.keras.datasets import mnist

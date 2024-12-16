@@ -4,7 +4,7 @@ import flwr as fl
 import numpy as np
 from flwr.common import FitRes, EvaluateRes, Parameters, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
-from utils import sparse_parameters_to_ndarrays, ndarrays_to_sparse_parameters, plot_metrics
+from utils import plot_metrics
 
 class SMPCServer(fl.server.strategy.FedAvg):
     def __init__(self, num_clients: int, fraction_fit: float = 1.0, fraction_evaluate: float = 1.0):
@@ -83,9 +83,6 @@ class SMPCServer(fl.server.strategy.FedAvg):
         # Aggregate weights using SMPC
         aggregated_weights = self.aggregate_smpc_weights(weights_results, num_samples)
         assert len(aggregated_weights) == len(weights_results[0]), "Mismatch in number of layers"
-
-        # Convert aggregated weights to Parameters
-        # aggregated_parameters = ndarrays_to_sparse_parameters(aggregated_weights)
 
         # Aggregate metrics (if any)
         parameters = fl.common.ndarrays_to_parameters(aggregated_weights)
