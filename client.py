@@ -2,10 +2,12 @@ import argparse
 import logging
 import threading
 import time
+from typing import List, Dict, Tuple
 from concurrent import futures
 import flwr as fl
 import grpc
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras.datasets import mnist
 
 import smpc_pb2
@@ -33,7 +35,7 @@ class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
         return smpc_pb2.AckResponse(status="ACK")
 
 class SMPCClient(fl.client.NumPyClient):
-    def __init__(self, model, client_id, client_port, peer_addresses):
+    def __init__(self, model: 'tf.keras.Model', client_id: int, client_port: int, peer_addresses: List[str]):
         self.model = model
         self.client_id = client_id
         self.peer_addresses = peer_addresses
@@ -87,7 +89,7 @@ class SMPCClient(fl.client.NumPyClient):
         logger.info(f"Client {self.client_id}: get_parameters() called")
         return self.model.get_weights()
 
-    def fit(self,parameters, config):
+    def fit(self,parameters: List[np.ndarray], config: Dict)  -> Tuple[List[np.ndarray], int, Dict]:
         logger.info(f"Client {self.client_id}: fit() called")
         processed_parameters = parameters.copy()
 
@@ -115,7 +117,7 @@ class SMPCClient(fl.client.NumPyClient):
 
         return aggregated_shares, len(self.x_train), {}
 
-    def evaluate(self, parameters, config):
+    def evaluate(self, parameters: List[np.ndarray], config: Dict) -> Tuple[float, int, Dict[str, float]]:
         logger.info(f"Client {self.client_id}: evaluate() called")
 
         model_weights = parameters.copy()
@@ -137,7 +139,7 @@ class SMPCClient(fl.client.NumPyClient):
 
         return loss, len(self.x_test), {"accuracy": accuracy}
 
-    def generate_value_secret_share(self, value, num_shares=3):
+    def generate_value_secret_share(self, value: float, num_shares: int = 3) -> List[np.ndarray]:
         """
         Generates secret shares of a given value using additive secret sharing.
 
@@ -153,11 +155,11 @@ class SMPCClient(fl.client.NumPyClient):
         list: A list of secret shares (floating-point numbers).
         """
         shares = [np.random.uniform(-1, 1) for _ in range(num_shares - 1)]
-        last_share = (value - sum(shares))
+        last_share = value - sum(shares)
         shares.append(last_share)
         return shares
 
-    def generate_matrix_secret_shares(self, matrix, num_shares=3):
+    def generate_matrix_secret_shares(self, matrix: np.ndarray, num_shares: int = 3) -> List[np.ndarray]:
         """
         Generates secret shares for each element in a matrix using additive secret sharing.
 
@@ -180,7 +182,7 @@ class SMPCClient(fl.client.NumPyClient):
                 shares[i][index] = value_shares[i]
         return shares
 
-    def split_model_weights_to_shares(self, weights, num_clients):
+    def split_model_weights_to_shares(self, weights: List[np.ndarray], num_clients: int) -> Dict[int, List[np.ndarray]]:
         """
         Splits model weights into secret shares for each client.
 
@@ -201,7 +203,7 @@ class SMPCClient(fl.client.NumPyClient):
         shares_grouped_by_client = {i: [shares[i] for shares in shares_per_weight] for i in range(num_clients)}
         return shares_grouped_by_client
 
-    def reconstruct_model_weights(self, shares_grouped_by_client):
+    def reconstruct_model_weights(self, shares_grouped_by_client: Dict[int, List[np.ndarray]]) -> List[np.ndarray]:
         """
         Reconstructs model weights from the secret shares provided by each client.
 
@@ -226,7 +228,7 @@ class SMPCClient(fl.client.NumPyClient):
         ]
         return reconstructed_weights
 
-    def send_shares_to_peers(self, secret_shares):
+    def send_shares_to_peers(self, secret_shares: Dict[int, List[np.ndarray]]):
         """
         Sends secret shares to all peer clients.
 
@@ -255,7 +257,7 @@ class SMPCClient(fl.client.NumPyClient):
             except grpc.RpcError as e:
                 logger.error(f"Client {self.client_id} failed to send shares to peer {peer_id}: {e}")
 
-    def receive_shares(self, client_id, shares):
+    def receive_shares(self, client_id: int, shares: List[np.ndarray]):
         """
         Receives secret shares from a peer client.
 
@@ -288,10 +290,10 @@ if __name__ == "__main__":
     parser.add_argument("--client_port", type=int, required=True, help="Client port")
     parser.add_argument("--peer_addresses", type=str, required=True, help="Peer addresses")
     args = parser.parse_args()
-    peer_addresses = args.peer_addresses.split(",")
+    peers = args.peers.split(",")
 
     model = load_model()
-    fl_client = SMPCClient(model, args.client_id, args.client_port, peer_addresses)
+    fl_client = SMPCClient(model, args.client_id, args.client_port, peers)
     try:
         fl_client.start()
     except KeyboardInterrupt:

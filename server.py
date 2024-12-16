@@ -58,9 +58,6 @@ class SMPCServer(fl.server.strategy.FedAvg):
             flattened_weights = [np.array(w, dtype=np.float32).flatten() for w in layer_weight]
 
             # Sum up the shares
-            # aggregated_layers = np.zeros_like(flattened_weights[0], dtype="int64")
-            # for weight in flattened_weights:
-            #     aggregated_layers  = (aggregated_layers + weight) % PRIME
             aggregated_layers = sum(weight * num_samples[i] for i, weight in enumerate(flattened_weights))
             aggregated_layers /= total_samples  # Normalize by total samples
 
