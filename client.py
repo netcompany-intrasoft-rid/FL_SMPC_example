@@ -290,10 +290,10 @@ if __name__ == "__main__":
     parser.add_argument("--client_port", type=int, required=True, help="Client port")
     parser.add_argument("--peer_addresses", type=str, required=True, help="Peer addresses")
     args = parser.parse_args()
-    peers = args.peers.split(",")
+    peers = args.peer_addresses.split(",")
 
-    model = load_model()
-    fl_client = SMPCClient(model, args.client_id, args.client_port, peers)
+    initial_model = load_model()
+    fl_client = SMPCClient(initial_model, args.client_id, args.client_port, peers)
     try:
         fl_client.start()
     except KeyboardInterrupt:

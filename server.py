@@ -7,7 +7,20 @@ from flwr.server.client_proxy import ClientProxy
 from utils import plot_metrics
 
 class SMPCServer(fl.server.strategy.FedAvg):
-    def __init__(self, num_clients: int, fraction_fit: float = 1.0, fraction_evaluate: float = 1.0):
+    """
+    A federated learning server that uses Secure Multi-Party Computation (SMPC) to aggregate weights.
+
+    Attributes:
+        num_clients (int): Number of clients expected to connect.
+        clients (list): List of connected clients.
+        wait_timeout (int): Timeout in seconds to wait for clients to connect.
+        clients_ready_event (threading.Event): Event to signal when all clients are connected.
+        model_structure (None): Placeholder for model structure.
+        loss_per_round (list): List to store loss per round.
+        accuracy_per_round (list): List to store accuracy per round.
+        Initialize the SMPCServer with the number of clients.
+    """
+    def __init__(self, num_clients: int):
         super().__init__()
         self.num_clients = num_clients
         self.clients = []
@@ -39,7 +52,8 @@ class SMPCServer(fl.server.strategy.FedAvg):
 
         return [weights1, bias1, weights2, bias2]
 
-    def aggregate_smpc_weights(self, weights_results: List[List[np.ndarray]], num_samples: List[int]) -> List[np.ndarray]:
+    def aggregate_smpc_weights(self, weights_results: List[List[np.ndarray]],
+                               num_samples: List[int]) -> List[np.ndarray]:
         """Aggregate weights using Secure Multi-Party Computation (SMPC)"""
         total_samples = sum(num_samples)
         aggregated_weights = []
@@ -124,7 +138,7 @@ class SMPCServer(fl.server.strategy.FedAvg):
         return fit_ins
 
 if __name__ == "__main__":
-    strategy = SMPCServer(num_clients=3, fraction_fit=1.0, fraction_evaluate=1.0)
+    strategy = SMPCServer(num_clients=3)
     fl.server.start_server(server_address="localhost:8080",
                            strategy=strategy,
-                           config=fl.server.ServerConfig(num_rounds=5))
+                           config=fl.server.ServerConfig(num_rounds=20))
