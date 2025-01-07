@@ -27,14 +27,14 @@ def plot_metrics(loss_per_round, accuracy_per_round):
     rounds = list(range(1, len(loss_per_round) + 1))
 
     plt.figure(figsize=(10, 5))
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 2, 2)
     plt.plot(rounds, loss_per_round, label="Loss", marker="o")
     plt.xlabel("Round")
     plt.ylabel("Loss")
     plt.title("Loss per Round")
     plt.grid(True)
 
-    plt.subplot(1, 2, 2)
+    plt.subplot(1, 2, 1)
     plt.plot(rounds, accuracy_per_round, label="Accuracy", marker="o", color="green")
     plt.xlabel("Round")
     plt.ylabel("Accuracy")

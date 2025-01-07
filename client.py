@@ -94,10 +94,9 @@ class SMPCClient(fl.client.NumPyClient):
         processed_parameters = parameters.copy()
 
         self.model.set_weights(processed_parameters)
-        self.model.fit(self.x_train, self.y_train, epochs=3, batch_size=32, verbose=1)
+        self.model.fit(self.x_train, self.y_train, epochs=1, batch_size=16, verbose=1)
 
         secret_shares = list(self.split_model_weights_to_shares(self.model.get_weights(), self.num_clients).values())
-
         self.own_shares = secret_shares[self.client_id]
 
         secret_shares.pop(self.client_id)

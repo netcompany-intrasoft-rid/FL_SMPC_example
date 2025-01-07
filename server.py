@@ -58,10 +58,8 @@ class SMPCServer(fl.server.strategy.FedAvg):
         total_samples = sum(num_samples)
         aggregated_weights = []
 
-        print("-- SERVER SMPC AGGREGATION --")
         for layer_weight in zip(*weights_results):
             layer_shape = layer_weight[0].shape
-            print(layer_shape)
 
             if layer_weight[0].ndim == 0:
                 # Bias
@@ -141,4 +139,4 @@ if __name__ == "__main__":
     strategy = SMPCServer(num_clients=3)
     fl.server.start_server(server_address="localhost:8080",
                            strategy=strategy,
-                           config=fl.server.ServerConfig(num_rounds=20))
+                           config=fl.server.ServerConfig(num_rounds=15))
