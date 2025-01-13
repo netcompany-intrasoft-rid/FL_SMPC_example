@@ -21,6 +21,12 @@ class SMPCServer(fl.server.strategy.FedAvg):
         Initialize the SMPCServer with the number of clients.
     """
     def __init__(self, num_clients: int):
+        """
+        Initialize the SMPCServer with the specified number of clients.
+
+        Args:
+            num_clients (int): The number of clients expected to participate in training.
+        """
         super().__init__()
         self.num_clients = num_clients
         self.clients = []
@@ -39,7 +45,12 @@ class SMPCServer(fl.server.strategy.FedAvg):
         return fl.common.ndarrays_to_parameters(self.generate_initial_weights())
 
     def generate_initial_weights(self) -> List[np.ndarray]:
-        """Generate initial weights for the model"""
+        """
+        Generate initial random weights for the model.
+
+        Returns:
+            List[np.ndarray]: A list of numpy arrays representing the model's initial weights.
+        """
         np.random.seed(42) # for reprodcibility
 
         # Layer 1: Dense 128
@@ -54,7 +65,16 @@ class SMPCServer(fl.server.strategy.FedAvg):
 
     def aggregate_smpc_weights(self, weights_results: List[List[np.ndarray]],
                                num_samples: List[int]) -> List[np.ndarray]:
-        """Aggregate weights using Secure Multi-Party Computation (SMPC)"""
+        """
+        Aggregate weights using Secure Multi-Party Computation (SMPC).
+
+        Args:
+            weights_results (List[List[np.ndarray]]): The list of weight updates from clients.
+            num_samples (List[int]): The number of samples used by each client during training.
+
+        Returns:
+            List[np.ndarray]: The aggregated weights.
+        """
         total_samples = sum(num_samples)
         aggregated_weights = []
 
@@ -82,7 +102,17 @@ class SMPCServer(fl.server.strategy.FedAvg):
                       server_round: int,
                       results: List[Tuple[ClientProxy, FitRes]],
                       failures: List[BaseException]) -> Tuple[Optional[fl.common.Parameters], Dict[str, Scalar]]:
-        """Aggregate the results of the clients' fit using SMPC protocol"""
+        """
+        Aggregate the results of the clients' training using the SMPC protocol.
+
+        Args:
+            server_round (int): The current round of training.
+            results (List[Tuple[ClientProxy, FitRes]]): A list of tuples containing the client proxy and fit results.
+            failures (List[BaseException]): A list of exceptions raised during the training process.
+
+        Returns:
+            Tuple[Optional[Parameters], Dict[str, Scalar]]: The aggregated model parameters and additional metrics.
+        """
         if not results:
             return None, {}
 
@@ -101,7 +131,17 @@ class SMPCServer(fl.server.strategy.FedAvg):
     def aggregate_evaluate(self, server_round: int,
                            results: List[Tuple[ClientProxy, EvaluateRes]],
                            failures: List[BaseException]) -> Tuple[Optional[float], Dict[str, Scalar]]:
-        """Aggregate the results of the clients' evaluation using SMPC protocol"""
+        """
+        Aggregate the results of the clients' evaluation using the SMPC protocol.
+
+        Args:
+            server_round (int): The current round of evaluation.
+            results (List[Tuple[ClientProxy, EvaluateRes]]): A list of tuples containing the client proxy and evaluation results.
+            failures (List[BaseException]): A list of exceptions raised during the evaluation process.
+
+        Returns:
+            Tuple[Optional[float], Dict[str, Scalar]]: The aggregated loss and additional metrics.
+        """
         if not results:
             print(f"Round {server_round}: No successfull evaluations. Failures: {failures}")
             return None, {}
@@ -124,7 +164,17 @@ class SMPCServer(fl.server.strategy.FedAvg):
     def configure_fit(self, server_round: int,
                       parameters: Parameters,
                       client_manager: fl.server.client_manager.ClientManager) -> List[Tuple[ClientProxy, fl.common.FitIns]]:
-        """Wait for all clients to connect before configuring fit"""
+        """
+        Wait for all clients to connect before configuring the training instructions.
+
+        Args:
+            server_round (int): The current round of training.
+            parameters (Parameters): The model parameters to be sent to the clients.
+            client_manager (fl.server.client_manager.ClientManager): The client manager handling connected clients.
+
+        Returns:
+            List[Tuple[ClientProxy, fl.common.FitIns]]: A list of tuples containing the client proxy and fit instructions.
+        """
         print(f"Round {server_round}: Waiting for all clients to connect...")
 
         if server_round == 1:
