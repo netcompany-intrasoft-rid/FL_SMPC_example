@@ -2,6 +2,9 @@ import argparse
 import logging
 import threading
 import time
+import socket
+import json
+import uuid
 from typing import List, Dict, Tuple
 from concurrent import futures
 import flwr as fl
@@ -16,6 +19,12 @@ from utils import partition_dataset, load_model
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Constants for discovery
+DISCOVERY_PORT = 9876
+DISCOVERY_BROADCAST_ADDR = '<broadcast>'
+DISCOVERY_INTERVAL = 3  # seconds
+DISCOVERY_TIMEOUT = 30  # seconds
 
 class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
     def __init__(self, client):
@@ -34,20 +43,177 @@ class SMPCServicer(smpc_pb2_grpc.SMPCServicer):
         self.client.receive_shares(client_id, shares)
         return smpc_pb2.AckResponse(status="ACK")
 
+class PeerDiscovery:
+    def __init__(self, client_id, grpc_port, min_peers=2, max_discovery_time=60):
+        self.client_id = client_id
+        self.grpc_port = grpc_port
+        self.min_peers = min_peers
+        self.max_discovery_time = max_discovery_time
+        self.uuid = str(uuid.uuid4())  # Unique identifier for this client
+
+        # Dictionary to store discovered peers {client_id: ip_address:port}
+        self.peers = {}
+        self.discovery_complete = threading.Event()
+        self.shutdown_flag = threading.Event()
+
+        # Get local IP
+        self.local_ip = self._get_local_ip()
+        logger.info(f"Local IP: {self.local_ip}")
+
+    def _get_local_ip(self):
+        """Get the local non-loopback IP address"""
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # Doesn't need to be reachable
+            s.connect(('10.255.255.255', 1))
+            local_ip = s.getsockname()[0]
+        except Exception:
+            local_ip = '127.0.0.1'
+        finally:
+            s.close()
+        return local_ip
+
+    def start_discovery(self):
+        """Start the discovery process (broadcast and listen)"""
+        # Start the broadcast and listener threads
+        threading.Thread(target=self._broadcast_presence, daemon=True).start()
+        threading.Thread(target=self._listen_for_peers, daemon=True).start()
+
+        # Wait for discovery to complete or timeout
+        start_time = time.time()
+        while (len(self.peers) < self.min_peers and 
+               time.time() - start_time < self.max_discovery_time and
+               not self.shutdown_flag.is_set()):
+            time.sleep(1)
+
+        if len(self.peers) >= self.min_peers:
+            logger.info(f"Discovery complete, found {len(self.peers)} peers: {self.peers}")
+            self.discovery_complete.set()
+            return True
+        else:
+            logger.warning(f"Discovery timeout, only found {len(self.peers)} peers")
+            self.discovery_complete.set()
+            return False
+
+    def _broadcast_presence(self):
+        """Broadcast presence to the network"""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+            # Prepare the announcement message
+            announce_msg = {
+                "type": "announce",
+                "client_id": self.client_id,
+                "grpc_port": self.grpc_port,
+                "uuid": self.uuid,
+                "ip": self.local_ip
+            }
+
+            # Broadcast until discovery is complete
+            while not self.discovery_complete.is_set() and not self.shutdown_flag.is_set():
+                try:
+                    s.sendto(json.dumps(announce_msg).encode(), 
+                             (DISCOVERY_BROADCAST_ADDR, DISCOVERY_PORT))
+                    logger.debug(f"Broadcasted presence: {announce_msg}")
+                except Exception as e:
+                    logger.error(f"Error broadcasting presence: {e}")
+
+                time.sleep(DISCOVERY_INTERVAL)
+
+    def _listen_for_peers(self):
+        """Listen for peer announcements"""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(('', DISCOVERY_PORT))
+            s.settimeout(1)  # Short timeout to check shutdown flag
+
+            # Listen until discovery is complete
+            while not self.discovery_complete.is_set() and not self.shutdown_flag.is_set():
+                try:
+                    data, addr = s.recvfrom(1024)
+                    msg = json.loads(data.decode())
+
+                    # Skip our own broadcasts and unknown message types
+                    if msg.get("uuid") == self.uuid or msg.get("type") != "announce":
+                        continue
+
+                    # Add peer to the list
+                    client_id = msg.get("client_id")
+                    ip = msg.get("ip", addr[0])  # Use provided IP or fallback to sender's IP
+                    grpc_port = msg.get("grpc_port")
+
+                    if client_id is not None and grpc_port is not None:
+                        self.peers[client_id] = f"{ip}:{grpc_port}"
+                        logger.info(f"Discovered peer {client_id} at {ip}:{grpc_port}")
+
+                        # Reply to announce our presence too
+                        self._send_direct_announcement(addr[0], DISCOVERY_PORT)
+
+                except socket.timeout:
+                    pass
+                except Exception as e:
+                    logger.error(f"Error listening for peers: {e}")
+
+    def _send_direct_announcement(self, ip, port):
+        """Send a direct announcement to a specific peer"""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                announce_msg = {
+                    "type": "announce",
+                    "client_id": self.client_id,
+                    "grpc_port": self.grpc_port,
+                    "uuid": self.uuid,
+                    "ip": self.local_ip
+                }
+                s.sendto(json.dumps(announce_msg).encode(), (ip, port))
+        except Exception as e:
+            logger.error(f"Error sending direct announcement: {e}")
+
+    def get_peer_addresses(self):
+        """Return the discovered peer addresses"""
+        self.discovery_complete.wait()
+        return list(self.peers.values())
+
+    def get_peer_count(self):
+        """Return the number of discovered peers"""
+        return len(self.peers)
+
+    def shutdown(self):
+        """Shutdown the discovery process"""
+        self.shutdown_flag.set()
+
+
 class SMPCClient(fl.client.NumPyClient):
-    def __init__(self, model: 'tf.keras.Model', client_id: int, client_port: int, peer_addresses: List[str]):
+    def __init__(self, model: 'tf.keras.Model', client_id: int, client_port: int,
+                 peer_addresses: List[str] = None, discovery_service: PeerDiscovery = None):
         self.model = model
         self.client_id = client_id
-        self.peer_addresses = peer_addresses
         self.client_port = client_port
+        self.discovery_service = discovery_service
+
         self.received_shares = {}
-        self.num_clients = len(peer_addresses) + 1
         self.all_shares_received = threading.Event()
         self.peer_stubs = {}
         self.all_peers_connected = threading.Event()
         self.model_shape = [layer.shape for layer in self.model.get_weights()]
         self.shutdown_flag = threading.Event()
         self.own_shares = None
+
+        # Determine peer addresses based on explicit list or discovery
+        if peer_addresses:
+            logger.info(f"Using explicitly provided peer addresses: {peer_addresses}")
+            self.peer_addresses = peer_addresses
+            self.num_clients = len(peer_addresses) + 1
+        elif self.discovery_service:
+            self.peer_addresses = self.discovery_service.get_peer_addresses()
+            self.num_clients = self.discovery_service.get_peer_count() + 1
+            logger.info(f"Using auto-discovered peer addresses: {self.peer_addresses}")
+        else:
+            logger.warning("No peer addresses provided and no discovery service - running in solo mode")
+            self.peer_addresses = []
+            self.num_clients = 1
+
+        logger.info(f"Client {self.client_id} will communicate with {self.num_clients-1} peers")
 
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
         x_train, x_test = x_train.astype("float32") / 255.0, x_test.astype("float32") / 255.0
@@ -64,6 +230,8 @@ class SMPCClient(fl.client.NumPyClient):
     def cleanup(self):
         try:
             self.server.stop(grace=5)
+            if self.discovery_service:
+                self.discovery_service.shutdown()
         except Exception as e:
             logger.error(f"An error occurred during cleanup: {e}")
         finally:
@@ -71,13 +239,14 @@ class SMPCClient(fl.client.NumPyClient):
 
     def connect_to_peers(self):
         logger.info(f"Client {self.client_id} connecting to peers")
-        for peer_id, peer_address in enumerate(self.peer_addresses):
+        for i, peer_address in enumerate(self.peer_addresses):
             try:
+                peer_id = i  # Temporary ID for addressing
                 channel = grpc.insecure_channel(peer_address)
                 self.peer_stubs[peer_id] = smpc_pb2_grpc.SMPCStub(channel)
-                logger.info(f"Client {self.client_id} connected to peer {peer_id} at {peer_address}")
+                logger.info(f"Client {self.client_id} connected to peer at {peer_address}")
             except Exception as e:
-                logger.error(f"Client {self.client_id} failed to connect to peer {peer_id}: {e}")
+                logger.error(f"Client {self.client_id} failed to connect to peer at {peer_address}: {e}")
 
         if len(self.peer_stubs) == len(self.peer_addresses):
             logger.info(f"Client {self.client_id} connected to all peers")
@@ -96,25 +265,37 @@ class SMPCClient(fl.client.NumPyClient):
         self.model.set_weights(processed_parameters)
         self.model.fit(self.x_train, self.y_train, epochs=1, batch_size=16, verbose=1)
 
+        # If no peers, just return the model weights directly
+        if self.num_clients <= 1:
+            return self.model.get_weights(), len(self.x_train), {}
+
         secret_shares = list(self.split_model_weights_to_shares(self.model.get_weights(), self.num_clients).values())
         self.own_shares = secret_shares[self.client_id]
 
-        secret_shares.pop(self.client_id)
-        self.send_shares_to_peers(secret_shares)
+        # Get all shares except our own
+        other_shares = secret_shares.copy()
+        other_shares.pop(self.client_id)
+        self.send_shares_to_peers(other_shares)
 
         try:
-            if not self.all_shares_received.wait(timeout=60):
-                raise TimeoutError(f"Not all shares received for client {self.client_id}")
+            # Wait for all shares from other clients
+            expected_shares = self.num_clients - 1
+            if expected_shares > 0:
+                if not self.all_shares_received.wait(timeout=60):
+                    raise TimeoutError(f"Not all shares received for client {self.client_id}")
+
+                all_shares = [self.own_shares] + list(self.received_shares.values())
+                aggregated_shares = self.reconstruct_model_weights(all_shares)
+                self.all_shares_received.clear()
+                self.received_shares.clear()
+
+                return aggregated_shares, len(self.x_train), {}
+            else:
+                # Solo client case
+                return self.model.get_weights(), len(self.x_train), {}
         except TimeoutError as e:
             logger.error(f"Client {self.client_id} failed to receive all shares: {e}")
             return None, 0, {}
-
-        all_shares = [self.own_shares] + list(self.received_shares.values())
-        aggregated_shares = self.reconstruct_model_weights(all_shares)
-        self.all_shares_received.clear()
-        self.received_shares.clear()
-
-        return aggregated_shares, len(self.x_train), {}
 
     def evaluate(self, parameters: List[np.ndarray], config: Dict) -> Tuple[float, int, Dict[str, float]]:
         logger.info(f"Client {self.client_id}: evaluate() called")
@@ -245,7 +426,7 @@ class SMPCClient(fl.client.NumPyClient):
             share_protos = []
             for matrix in shares:
                 flattened_data = matrix.flatten()
-                share_protos.append(smpc_pb2.Share(data=flattened_data.astype(np.float32).tobytes(), shape=list(matrix.shape))) # Convert shape to list
+                share_protos.append(smpc_pb2.Share(data=flattened_data.astype(np.float32).tobytes(), shape=list(matrix.shape)))
             request = smpc_pb2.SharesRequest(client_id=self.client_id, shares=share_protos)
             try:
                 response = stub.SendShares(request)
@@ -270,29 +451,73 @@ class SMPCClient(fl.client.NumPyClient):
         """
         logger.info(f"Client {self.client_id} received shares from client {client_id}")
         self.received_shares[client_id] = shares
-        if len(self.received_shares) == len(self.peer_addresses):
+        expected_shares = len(self.peer_addresses)
+        if expected_shares > 0 and len(self.received_shares) >= expected_shares:
             logger.info(f"Client {self.client_id} received all shares")
             self.all_shares_received.set()
 
     def start(self):
+        # Allow some time for all clients to start up
         time.sleep(2)
+
+        # Connect to all discovered peers
         self.connect_to_peers()
 
         logger.info(f"Client {self.client_id} waiting for all peers to connect")
-        self.all_peers_connected.wait()
-        logger.info("All peer connections established. Connecting to Flower server...")
+        if len(self.peer_addresses) > 0:
+            self.all_peers_connected.wait()
+
+        logger.info("Peer connections established. Connecting to Flower server...")
         fl.client.start_client(server_address="localhost:8080", client=self.to_client())
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SMPC Client")
-    parser.add_argument("--client_id", type=int, required=True, help="Client ID")
-    parser.add_argument("--client_port", type=int, required=True, help="Client port")
-    parser.add_argument("--peer_addresses", type=str, required=True, help="Peer addresses")
-    args = parser.parse_args()
-    peers = args.peer_addresses.split(",")
+def parse_peer_addresses(peer_addresses_str):
+    """Parse comma-separated peer addresses into a list"""
+    if not peer_addresses_str:
+        return None
+    return peer_addresses_str.split(",")
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="SMPC Client with Hybrid Discovery")
+    parser.add_argument("--client_id", type=int, required=True, help="Client ID")
+    parser.add_argument("--client_port", type=int, required=True, help="Client gRPC port")
+    parser.add_argument("--peer_addresses", type=str, help="Comma-separated list of peer addresses (ip:port). If not provided, auto-discovery will be used.")
+    parser.add_argument("--min_peers", type=int, default=2, help="Minimum number of peers to discover before starting (only used with auto-discovery)")
+    parser.add_argument("--discovery_timeout", type=int, default=60, help="Max time (seconds) to wait for peer discovery (only used with auto-discovery)")
+    args = parser.parse_args()
+
+    # Parse peer addresses if provided
+    peer_addresses = parse_peer_addresses(args.peer_addresses)
+    discovery_service = None
+
+    # If no peer addresses provided, use auto-discovery
+    if peer_addresses is None:
+        logger.info(f"No peer addresses provided, starting auto-discovery with client ID {args.client_id}")
+        discovery_service = PeerDiscovery(
+            client_id=args.client_id, 
+            grpc_port=args.client_port,
+            min_peers=args.min_peers,
+            max_discovery_time=args.discovery_timeout
+        )
+
+        # Start discovery in a separate thread
+        discovery_thread = threading.Thread(target=discovery_service.start_discovery)
+        discovery_thread.start()
+        discovery_thread.join()
+    else:
+        logger.info(f"Using explicit peer addresses: {peer_addresses}")
+
+    # Load the initial model
     initial_model = load_model()
-    fl_client = SMPCClient(initial_model, args.client_id, args.client_port, peers)
+
+    # Create and start the SMPC client
+    fl_client = SMPCClient(
+        model=initial_model, 
+        client_id=args.client_id, 
+        client_port=args.client_port,
+        peer_addresses=peer_addresses,
+        discovery_service=discovery_service
+    )
+
     try:
         fl_client.start()
     except KeyboardInterrupt:
