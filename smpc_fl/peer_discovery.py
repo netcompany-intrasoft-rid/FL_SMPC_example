@@ -15,6 +15,22 @@ DISCOVERY_INTERVAL = 3  # seconds
 DISCOVERY_TIMEOUT = 30  # seconds
 
 class PeerDiscovery:
+    """
+    Module for peer discovery in a decentralized network.
+
+    This module provides the `PeerDiscovery` class, which enables clients to discover 
+    and communicate with peers using UDP broadcast announcements. The discovery 
+    process consists of broadcasting the client's presence and listening for other 
+    peer announcements within a specified time limit.
+
+    Features:
+    - Broadcasts presence using UDP to announce availability.
+    - Listens for peer announcements and maintains a dictionary of discovered peers.
+    - Supports a minimum peer requirement before completing the discovery process.
+    - Allows querying discovered peers and their addresses.
+    - Implements a shutdown mechanism to stop discovery.
+    """
+
     def __init__(self, client_id, grpc_port, min_peers=2, max_discovery_time=60):
         self.client_id = client_id
         self.grpc_port = grpc_port
@@ -52,7 +68,7 @@ class PeerDiscovery:
 
         # Wait for discovery to complete or timeout
         start_time = time.time()
-        while (len(self.peers) < self.min_peers and 
+        while (len(self.peers) < self.min_peers and
                time.time() - start_time < self.max_discovery_time and
                not self.shutdown_flag.is_set()):
             time.sleep(1)
@@ -83,7 +99,7 @@ class PeerDiscovery:
             # Broadcast until discovery is complete
             while not self.discovery_complete.is_set() and not self.shutdown_flag.is_set():
                 try:
-                    s.sendto(json.dumps(announce_msg).encode(), 
+                    s.sendto(json.dumps(announce_msg).encode(),
                              (DISCOVERY_BROADCAST_ADDR, DISCOVERY_PORT))
                     logger.debug(f"Broadcasted presence: {announce_msg}")
                 except Exception as e:

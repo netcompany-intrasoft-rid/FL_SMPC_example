@@ -85,4 +85,3 @@ The `metrics.jpg` files in `normal_fl/` and `smpc_fl/` visualize the performance
 
 ## License
 This project is open-source under the **MIT License**.
-
