@@ -78,16 +78,11 @@ Federated learning enables decentralized training of machine learning models wit
 4. The aggregation is performed **without exposing individual model updates**.
 
 ### Peer Discovery Mechanism
-
-- Clients use `peer_discovery.py` to dynamically find and connect with available peers.
-- This avoids the need for a predefined network topology.
+Clients use `peer_discovery.py` to automatically identify and connect with available peers, eliminating the need for a predefined network topology. This feature is optional. If not used, the IP addresses and ports of peers must be manually specified using the `--peer_addresses` argument in a comma-separated string format when running the `client.py` script in the SMPC implementation.
 
 ## Performance Metrics
-
-- The `metrics.jpg` files in `normal_fl/` and `smpc_fl/` visualize the performance.
-- Compare training accuracy, loss, and communication overhead between **normal FL** and **P2P SMPC FL**.
+The `metrics.jpg` files in `normal_fl/` and `smpc_fl/` visualize the performance (accuracy and loss) between **normal FL** and **P2P SMPC FL** implementations.
 
 ## License
-
 This project is open-source under the **MIT License**.
 
