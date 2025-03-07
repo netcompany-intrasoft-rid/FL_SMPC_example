@@ -1,3 +1,4 @@
+import argparse
 import threading
 from typing import List, Tuple, Optional, Dict
 import flwr as fl
@@ -184,10 +185,14 @@ class NormalFLServer(fl.server.strategy.FedAvg):
         return fit_ins
 
 if __name__ == "__main__":
-    strategy = NormalFLServer(num_clients=10)
+    parser = argparse.ArgumentParser(description="Federated Learning Server")
+    parser.add_argument("--num_clients", type=int, required=True, help="Number of clients")
+    args = parser.parse_args()
+
+    strategy = NormalFLServer(num_clients=args.num_clients)
     start_time = time.time()
     fl.server.start_server(server_address="localhost:8080",
                            strategy=strategy,
-                           config=fl.server.ServerConfig(num_rounds=15))
+                           config=fl.server.ServerConfig(num_rounds=10))
     end_time = time.time()
     print(f"Time taken: {end_time - start_time} seconds")
