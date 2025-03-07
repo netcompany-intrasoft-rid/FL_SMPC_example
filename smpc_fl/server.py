@@ -5,6 +5,7 @@ import numpy as np
 from flwr.common import FitRes, EvaluateRes, Parameters, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from utils import plot_metrics
+import time
 
 class SMPCServer(fl.server.strategy.FedAvg):
     """
@@ -39,7 +40,12 @@ class SMPCServer(fl.server.strategy.FedAvg):
     def initialize_parameters(self, client_manager: fl.server.client_manager.ClientManager) -> Optional[Parameters]:
         """Ensure the server waits for all clients to connect before initializing parameters"""
         print(f"Waiting for {self.num_clients} clients to connect...")
+        net_start = time.time()
+        net_time = 0
         client_manager.wait_for(num_clients=self.num_clients, timeout=self.wait_timeout)
+        net_end = time.time()
+        net_time = net_end - net_start
+        print(f"-- Time taken to connect all clients: {net_time} seconds --")
         self.clients_ready_event.set()
         print("All clients connected. Initializing parameters...")
         return fl.common.ndarrays_to_parameters(self.generate_initial_weights())
@@ -157,7 +163,9 @@ class SMPCServer(fl.server.strategy.FedAvg):
         print(f"Round {server_round}: Weighted Accuracy: {weighted_accuracy}, Weighted Loss: {weighted_loss}")
         self.loss_per_round.append(weighted_loss)
         self.accuracy_per_round.append(weighted_accuracy)
-        plot_metrics(self.loss_per_round, self.accuracy_per_round)
+        # plot_metrics(self.loss_per_round, self.accuracy_per_round)
+        if server_round == 15:
+            plot_metrics(self.loss_per_round, self.accuracy_per_round)
 
         return weighted_loss, {"accuracy": weighted_accuracy}
 
@@ -176,7 +184,6 @@ class SMPCServer(fl.server.strategy.FedAvg):
             List[Tuple[ClientProxy, fl.common.FitIns]]: A list of tuples containing the client proxy and fit instructions.
         """
         print(f"Round {server_round}: Waiting for all clients to connect...")
-
         if server_round == 1:
             # in the fits round, we wait for all clients to connect
             if not self.clients_ready_event.wait(self.wait_timeout):
@@ -186,7 +193,10 @@ class SMPCServer(fl.server.strategy.FedAvg):
         return fit_ins
 
 if __name__ == "__main__":
-    strategy = SMPCServer(num_clients=3)
+    strategy = SMPCServer(num_clients=8)
+    start_time = time.time()
     fl.server.start_server(server_address="localhost:8080",
                            strategy=strategy,
                            config=fl.server.ServerConfig(num_rounds=15))
+    end_time = time.time()
+    print(f"Time taken: {end_time - start_time} seconds")

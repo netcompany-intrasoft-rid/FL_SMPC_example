@@ -42,4 +42,5 @@ def plot_metrics(loss_per_round, accuracy_per_round):
     plt.grid(True)
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("metrics.jpg", format="jpg")
+    plt.close()
