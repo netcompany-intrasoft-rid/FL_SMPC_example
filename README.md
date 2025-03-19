@@ -12,7 +12,14 @@ Federated learning enables decentralized training of machine learning models wit
 │   ├── client.py
 │   ├── metrics.jpg
 │   ├── server.py
-│   ├── start_clients.sh
+│   ├── start_clients_10.sh
+│   ├── start_clients_3.sh
+│   ├── start_clients_4.sh
+│   ├── start_clients_5.sh
+│   ├── start_clients_6.sh
+│   ├── start_clients_7.sh
+│   ├── start_clients_8.sh
+│   ├── start_clients_9.sh
 │   └── utils.py
 ├── requirements.txt
 └── smpc_fl
@@ -23,7 +30,14 @@ Federated learning enables decentralized training of machine learning models wit
     ├── smpc.proto
     ├── smpc_pb2.py
     ├── smpc_pb2_grpc.py
-    ├── start_clients.sh
+    ├── start_clients_10.sh
+    ├── start_clients_3.sh
+    ├── start_clients_4.sh
+    ├── start_clients_5.sh
+    ├── start_clients_6.sh
+    ├── start_clients_7.sh
+    ├── start_clients_8.sh
+    ├── start_clients_9.sh
     └── utils.py
 ```
 
@@ -44,27 +58,27 @@ Federated learning enables decentralized training of machine learning models wit
    ```
 
 ## Running the Project
-
+Be sure to specify the number of clients (3-10) in server and clients scripts in both implementations (normal FL and SMPC FL)
 ### Normal Federated Learning
 
 1. Start the central FL server:
    ```sh
-   python normal_fl/server.py
+   python normal_fl/server.py --num_clients={number of clients}
    ```
 2. Start multiple clients:
    ```sh
-   bash normal_fl/start_clients.sh
+   bash normal_fl/start_clients_{number of clients}.sh
    ```
 
 ### P2P SMPC Federated Learning
 
 1. Start the SMPC FL server:
    ```sh
-   python smpc_fl/server.py
+   python smpc_fl/server.py --num_clients={number of clients}
    ```
 2. Start multiple clients:
    ```sh
-   bash smpc_fl/start_clients.sh
+   bash smpc_fl/start_clients_{number of clients}.sh
    ```
 
 ## How It Works
