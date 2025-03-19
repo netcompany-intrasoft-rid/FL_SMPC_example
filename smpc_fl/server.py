@@ -1,12 +1,12 @@
 import argparse
 import threading
 from typing import List, Tuple, Optional, Dict
+import time
 import flwr as fl
 import numpy as np
 from flwr.common import FitRes, EvaluateRes, Parameters, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from utils import plot_metrics
-import time
 
 class SMPCServer(fl.server.strategy.FedAvg):
     """

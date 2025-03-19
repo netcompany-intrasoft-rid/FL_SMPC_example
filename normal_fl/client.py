@@ -26,7 +26,6 @@ class NormalFLClient(fl.client.NumPyClient):
         self.x_train, self.y_train = partition_dataset(x_train, y_train, self.num_clients, self.client_id)
         self.x_test, self.y_test = partition_dataset(x_test, y_test, self.num_clients, self.client_id)
 
-
     def get_parameters(self):
         logger.info(f"Client {self.client_id}: get_parameters() called")
         return self.model.get_weights()
@@ -66,16 +65,26 @@ class NormalFLClient(fl.client.NumPyClient):
     def start(self):
         fl.client.start_client(server_address="localhost:8080", client=self.to_client())
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SMPC Client with Hybrid Discovery")
-    parser.add_argument("--num_clients", type=int, required=True, help="Total number of clients")
-    parser.add_argument("--client_id", type=int, required=True, help="Client ID")
+    parser = argparse.ArgumentParser(
+        description="SMPC Client with Hybrid Discovery")
+    parser.add_argument("--num_clients",
+                        type=int,
+                        required=True,
+                        help="Total number of clients")
+    parser.add_argument("--client_id",
+                        type=int,
+                        required=True,
+                        help="Client ID")
     args = parser.parse_args()
     # Load the initial model
     initial_model = load_model()
 
     # Create and start the client
-    fl_client = NormalFLClient(model=initial_model, num_clients=args.num_clients, client_id=args.client_id)
+    fl_client = NormalFLClient(model=initial_model,
+                               num_clients=args.num_clients,
+                               client_id=args.client_id)
 
     try:
         fl_client.start()
