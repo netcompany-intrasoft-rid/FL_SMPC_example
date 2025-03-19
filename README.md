@@ -58,7 +58,7 @@ Federated learning enables decentralized training of machine learning models wit
    ```
 
 ## Running the Project
-Be sure to specify the number of clients (3-10) in server and clients scripts in both implementations (normal FL and SMPC FL)
+Be sure to specify the number of clients (3-10) in server and clients scripts in both implementations (normal FL and SMPC FL). The number of federated learning rounds can also be specified using the `--num_rounds` argument in the `server.py` script for bith implementations (default value is 10).
 ### Normal Federated Learning
 
 1. Start the central FL server:

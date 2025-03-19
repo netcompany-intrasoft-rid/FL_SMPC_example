@@ -200,12 +200,17 @@ if __name__ == "__main__":
                         type=int,
                         required=True,
                         help="Number of clients")
+    parser.add_argument("--num_rounds",
+                        type=int,
+                        required=False,
+                        help="Number of rounds",
+                        default=10)
     args = parser.parse_args()
 
     strategy = SMPCServer(num_clients=args.num_clients)
     start_time = time.time()
     fl.server.start_server(server_address="localhost:8080",
                            strategy=strategy,
-                           config=fl.server.ServerConfig(num_rounds=10))
+                           config=fl.server.ServerConfig(num_rounds=args.num_rounds))
     end_time = time.time()
     print(f"Time taken: {end_time - start_time} seconds")
