@@ -187,11 +187,7 @@ class NormalFLServer(fl.server.strategy.FedAvg):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Federated Learning Server")
     parser.add_argument("--num_clients", type=int, required=True, help="Number of clients")
-    parser.add_argument("num_rounds",
-                        type=int,
-                        required=False,
-                        help="Number of rounds",
-                        default=10)
+    parser.add_argument("--num_rounds", type=int, required=False, help="Number of rounds", default=10)
     args = parser.parse_args()
 
     strategy = NormalFLServer(num_clients=args.num_clients)
