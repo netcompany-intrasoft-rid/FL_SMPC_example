@@ -45,8 +45,8 @@ Federated learning enables decentralized training of machine learning models wit
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/your-repo/p2p-smpc-fl.git
-   cd p2p-smpc-fl
+   git clone https://github.com/netcompany-intrasoft-rid/FL_SMPC_example
+   cd FL_SMPC_example
    ```
 2. Install dependencies (ideally in a fresh Python environment):
    ```sh
