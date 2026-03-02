@@ -58,8 +58,36 @@ Federated learning enables decentralized training of machine learning models wit
    ```
 
 ## Running the Project
-Be sure to specify the number of clients (3-10) in server and clients scripts in both implementations (normal FL and SMPC FL). The number of federated learning rounds can also be specified using the `--num_rounds` argument in the `server.py` script for bith implementations (default value is 10).
-### Normal Federated Learning
+
+### Option 1: Using Flower Hub (Recommended)
+
+The project is now compatible with Flower Hub for easy deployment:
+
+```sh
+# Run with default settings (10 rounds, simulation mode)
+flwr run .
+
+# Run with custom configuration
+flwr run . --run-config num-server-rounds=15
+```
+
+For production deployment:
+```sh
+# Terminal 1: Start SuperLink
+flower-superlink --insecure
+
+# Terminal 2+: Start SuperNodes (one per client)
+flower-supernode --insecure
+
+# Run the app
+flwr run . --run-config num-server-rounds=10
+```
+
+### Option 2: Legacy Mode
+
+Be sure to specify the number of clients (3-10) in server and clients scripts in both implementations (normal FL and SMPC FL). The number of federated learning rounds can also be specified using the `--num_rounds` argument in the `server.py` script for both implementations (default value is 10).
+
+#### Normal Federated Learning
 
 1. Start the central FL server:
    ```sh
@@ -70,7 +98,7 @@ Be sure to specify the number of clients (3-10) in server and clients scripts in
    bash normal_fl/start_clients_{number of clients}.sh
    ```
 
-### P2P SMPC Federated Learning
+#### P2P SMPC Federated Learning
 
 1. Start the SMPC FL server:
    ```sh
