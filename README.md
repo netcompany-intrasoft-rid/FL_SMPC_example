@@ -50,37 +50,62 @@ Federated learning enables decentralized training of machine learning models wit
    ```
 2. Install dependencies (ideally in a fresh Python environment):
    ```sh
+   pip install -e .
+   ```
+   Or install from requirements.txt:
+   ```sh
    pip install -r requirements.txt
    ```
-3. Generate gRPC files (if modifications are made to `smpc.proto`):
+3. (Optional) Generate gRPC files if modifications are made to `smpc.proto`:
    ```sh
-   python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. smpc.proto
+   cd smpc_fl
+   python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. smpc.proto
    ```
 
 ## Running the Project
 
 ### Option 1: Using Flower Hub (Recommended)
 
-The project is now compatible with Flower Hub for easy deployment:
+The project is Flower Hub compatible with P2P SMPC support:
 
+**Simulation Mode** (easiest for testing):
 ```sh
-# Run with default settings (10 rounds, simulation mode)
+# Run with default settings (10 rounds, 3 clients)
 flwr run .
 
 # Run with custom configuration
-flwr run . --run-config num-server-rounds=15
+flwr run . --run-config num-server-rounds=5
 ```
 
-For production deployment:
+**Deployment Mode** (for production):
 ```sh
-# Terminal 1: Start SuperLink
+# Terminal 1: Start SuperLink (server)
 flower-superlink --insecure
 
-# Terminal 2+: Start SuperNodes (one per client)
+# Terminal 2, 3, 4...: Start SuperNodes (one per client)
 flower-supernode --insecure
 
-# Run the app
+# Terminal N: Run the app
 flwr run . --run-config num-server-rounds=10
+```
+
+**Features:**
+- ✅ P2P SMPC protocol with gRPC secret sharing
+- ✅ Automatic peer discovery and connection
+- ✅ Works in both simulation and deployment modes
+- ✅ Uses `flwr-datasets` for automatic data partitioning
+
+**Configuration Options:**
+
+Edit `pyproject.toml` to customize:
+```toml
+[tool.flwr.app.config]
+num-server-rounds = 10        # Number of training rounds
+fraction-fit = 1.0            # Fraction of clients per round
+base-port = 50051             # Base port for P2P communication
+
+[tool.flwr.federations.local-simulation]
+options.num-supernodes = 3    # Number of clients in simulation
 ```
 
 ### Option 2: Legacy Mode
