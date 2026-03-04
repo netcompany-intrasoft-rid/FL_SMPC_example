@@ -5,10 +5,8 @@ This repository demonstrates Secure Multi-Party Computation (SMPC) for federated
 Federated learning enables decentralized training of machine learning models without sharing raw data. However, traditional federated learning still requires a central server to aggregate model updates. This project introduces an additive secret-sharing-based P2P SMPC protocol to perform secure aggregation without relying solely on a central aggregator.
 
 ### Key Features
-- ✅ **Flower 1.26.1**: Latest stable version with Message API
 - ✅ **Messages API SMPC**: Share exchange is orchestrated via ServerApp message relay
 - ✅ **Additive Secret Sharing**: Secure multi-party computation for privacy-preserving aggregation
-- ✅ **No Custom gRPC**: Uses Flower's native Message API
 - ✅ **Simulation & Deployment**: Works in both modes seamlessly
 
 ### Project structure
@@ -20,7 +18,6 @@ Federated learning enables decentralized training of machine learning models wit
     ├── client_app.py      # Client with Flower Message APIs
     ├── server_app.py      # Server strategy
     ├── smpc_client.py     # SMPC protocol implementation
-    ├── peer_discovery.py  # Legacy peer discovery (optional)
     └── utils.py           # Helper functions
 ```
 
@@ -34,10 +31,6 @@ Federated learning enables decentralized training of machine learning models wit
 2. Install dependencies (ideally in a fresh Python environment):
    ```sh
    pip install -e .
-   ```
-   Or install from requirements.txt:
-   ```sh
-   pip install -r requirements.txt
    ```
 
 ## Running the Project
