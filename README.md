@@ -70,9 +70,7 @@ flwr run . --run-config num-server-rounds=10
 **Features:**
 - ✅ Messages API SMPC protocol with server-side message relay
 - ✅ Clients locally reconstruct aggregated shares
-- ✅ No custom gRPC or direct peer sockets
 - ✅ Works in both simulation and deployment modes
-- ✅ Uses `flwr-datasets` for automatic data partitioning
 
 **Configuration Options:**
 
@@ -84,16 +82,6 @@ fraction-fit = 1.0            # Fraction of clients per round
 
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 3    # Number of clients in simulation
-```
-
-### Legacy Scripts
-
-Legacy SMPC scripts (`smpc_fl/client.py` and `smpc_fl/server.py`) are intentionally disabled.
-
-Use only the Flower Messages API path:
-
-```sh
-flwr run .
 ```
 
 ## How It Works
@@ -115,9 +103,6 @@ In Flower 1.26.1, we implement SMPC using the Message API relay pattern:
 - Each client locally aggregates all shares (own + received)
 - The server receives already-aggregated weights and performs weighted averaging
 - This provides privacy as no single entity sees individual client updates
-
-## Performance Metrics
-The `metrics.jpg` files in `normal_fl/` and `smpc_fl/` visualize the performance (accuracy and loss) between **normal FL** and **P2P SMPC FL** implementations.
 
 ## License
 This project is open-source under the **MIT License**.
