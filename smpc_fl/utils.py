@@ -1,5 +1,5 @@
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Flatten
+from tensorflow.keras.layers import Dense, Flatten, Input
 import matplotlib.pyplot as plt
 
 def partition_dataset(x, y, num_clients, client_id):
@@ -15,7 +15,8 @@ def partition_dataset(x, y, num_clients, client_id):
 
 def load_model():
     model = Sequential([
-        Flatten(input_shape=(28, 28)),
+        Input(shape=(28, 28)),
+        Flatten(),
         Dense(128, activation='relu'),
         Dense(10, activation='softmax')
     ])

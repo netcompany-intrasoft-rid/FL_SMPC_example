@@ -1,6 +1,6 @@
 # SMPC Federated Learning
 
-A Peer-to-Peer Secure Multi-Party Computation (P2P SMPC) protocol for federated learning using the Flower framework.
+A Secure Multi-Party Computation (SMPC) protocol for federated learning using the Flower framework.
 
 ## Overview
 
@@ -13,6 +13,9 @@ pip install -e .
 ```
 
 ## Running the App
+
+Only the Flower Messages API implementation is supported.
+Legacy scripts (`smpc_fl/client.py`, `smpc_fl/server.py`) are disabled.
 
 ### Using Flower Simulation
 
@@ -56,9 +59,9 @@ Key parameters in `pyproject.toml`:
 ### Additive Secret Sharing in SMPC
 
 1. Each client splits its model updates into multiple secret shares
-2. Shares are distributed to different peers in the network
-3. Each peer aggregates locally the received shares
-4. The server aggregates the locally aggregated parameters to reconstruct the final model update
+2. Shares are returned via Messages API and relayed by the server
+3. Each client reconstructs local aggregated shares from relayed messages
+4. The server averages reconstructed client updates into the next global model
 5. Aggregation is performed without exposing individual model updates
 
 ## Project Structure
@@ -70,8 +73,8 @@ smpc_fl/
 ├── server_app.py       # ServerApp definition
 ├── smpc_client.py      # SMPC protocol implementation
 ├── utils.py            # Utility functions
-├── peer_discovery.py   # P2P peer discovery (optional)
-└── smpc.proto          # gRPC protocol definition
+├── peer_discovery.py   # Legacy reference only (unused)
+└── smpc.proto          # Legacy reference only (unused)
 ```
 
 ## License

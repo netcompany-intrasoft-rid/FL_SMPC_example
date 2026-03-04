@@ -11,13 +11,10 @@ authors = [
     { name = "SYNTHEMA Project", email = "info@synthema.eu" },
 ]
 dependencies = [
-    "flwr[simulation]>=1.15.0,<2.0",
+    "flwr[simulation]==1.26.1",
     "flwr-datasets==0.6.0",
     "tensorflow>=2.18.0,<3.0",
     "numpy>=1.26.0,<2.0",
-    "grpcio>=1.64.0,<2.0",
-    "grpcio-tools>=1.54.0,<2.0",
-    "protobuf>=4.25.3,<5.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -26,7 +23,6 @@ packages = ["smpc_fl"]
 [tool.hatch.build]
 include = [
     "smpc_fl/*.py",
-    "smpc_fl/smpc.proto",
 ]
 
 [tool.flwr.app]
@@ -40,8 +36,24 @@ clientapp = "smpc_fl.client_app:app"
 num-server-rounds = 10
 fraction-fit = 1.0
 
-[tool.flwr.federations]
-default = "local-simulation"
 
-[tool.flwr.federations.local-simulation]
-options.num-supernodes = 3
+#######################################################################
+# CONFIGURATION MIGRATION NOTICE:
+#
+# What was previously called "federation config" for SuperLink
+# connections in pyproject.toml has been renamed and moved.
+#
+# These settings are now **SuperLink connection configuration**
+# and are defined in the Flower configuration file.
+#
+# The entries below are commented out intentionally and are kept
+# only as a migration reference.
+#
+# Docs: https://flower.ai/docs/framework/ref-flower-configuration.html
+#######################################################################
+
+# [tool.flwr.federations]
+# default = "local-simulation"
+
+# [tool.flwr.federations.local-simulation]
+# options.num-supernodes = 3
