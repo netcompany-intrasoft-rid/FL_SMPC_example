@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "smpc-fl"
-version = "1.0.0"
+version = "1.0.1"
 description = "P2P SMPC Protocol for Federated Learning using Flower"
 license = {text = "MIT"}
 authors = [

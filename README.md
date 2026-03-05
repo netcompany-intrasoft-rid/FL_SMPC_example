@@ -23,10 +23,9 @@ Federated learning enables decentralized training of machine learning models wit
 
 ### Project setup
 
-1. Clone the repository:
+1. Install the app:
    ```sh
-   git clone https://github.com/netcompany-intrasoft-rid/FL_SMPC_example
-   cd FL_SMPC_example
+   flwr new @synthema/smpc-fl
    ```
 2. Install dependencies (ideally in a fresh Python environment):
    ```sh
@@ -73,8 +72,11 @@ Edit `pyproject.toml` to customize:
 num-server-rounds = 10        # Number of training rounds
 fraction-fit = 1.0            # Fraction of clients per round
 
-[tool.flwr.federations.local-simulation]
-options.num-supernodes = 3    # Number of clients in simulation
+[superlink]
+default = "local"
+
+[superlink.local-simulation]
+options.num-supernodes = 10  # Number of clients in simulation
 ```
 
 ## How It Works
