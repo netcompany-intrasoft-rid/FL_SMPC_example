@@ -103,4 +103,4 @@ In Flower 1.26.1, we implement SMPC using the Message API relay pattern:
 This project is open-source under the **MIT License**.
 
 ## Funding
-This project was developed as part of the [SYNTHEMA](https://synthema.eu/) project funded by the European Union’s Horizon Europe Research and Innovation programme under grant agreement Nr. 101095530. 
+This project was developed by Netcompany RID department as part of the [SYNTHEMA](https://synthema.eu/) project funded by the European Union’s Horizon Europe Research and Innovation programme under grant agreement Nr. 101095530. 
